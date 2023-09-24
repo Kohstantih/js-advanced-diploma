@@ -1,0 +1,20 @@
+image: Previous Visual Studio 2022
+
+stack: node 18
+
+branches:
+  only:
+    - master
+
+cache: node_modules
+
+install:
+  - npm install
+
+build: on
+
+build_script:
+  - npm run build
+
+test_script:
+  - npm run lint && npm test
