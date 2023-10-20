@@ -6,7 +6,7 @@
   "scripts": {
     "test": " jest --coverage",
     "lint": "eslint .",
-    "build": "webpack --mode development",
+    "build": "webpack",
     "serve": "webpack serve"
   },
   "repository": {

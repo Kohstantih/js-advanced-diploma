@@ -16,8 +16,7 @@ export default class GameController {
   constructor(gamePlay, stateService) {
     this.gamePlay = gamePlay;
     this.stateService = stateService;
-    this.state = null;
-    this.characterCount = 3;
+    this.state = this.stateService.load();
     this.allowedTypesPlayer = [Bowman, Swordsman, Magician];
     this.allowedTypesEnemy = [Vampire, Undead, Daemon];
     this.addListenersBoard();
@@ -32,8 +31,10 @@ export default class GameController {
     }
 
     if (this.state.level === 5) {
-      GamePlay.showMessage('Победа');
-      this.removeListener();
+      const score = this.calculationScore();
+      this.updateScore(score);
+      GamePlay.showMessage(`Победа!!! \n Текущий результат ${score} \n Рекорд ${this.state.maxScore}`);
+      this.removeListenerBoard();
       return;
     }
 
@@ -61,6 +62,7 @@ export default class GameController {
 
     const posPlayerBusy = [];
     const maxLevel = this.state.level;
+    const characterCount = this.state.level + 1;
 
     const validposPlayer = [];
     for (let i = 0; i < this.gamePlay.boardSize; i += 1) {
@@ -69,10 +71,17 @@ export default class GameController {
     }
 
     if (this.state.teamPlayer === null) {
-      this.state.teamPlayer = generateTeam(this.allowedTypesPlayer, maxLevel, this.characterCount);
+      this.state.teamPlayer = generateTeam(this.allowedTypesPlayer, maxLevel, characterCount);
+    } else if (this.state.teamPlayer.characters.length < characterCount) {
+      const count = characterCount - this.state.teamPlayer.characters.length;
+      const result = generateTeam(this.allowedTypesPlayer, maxLevel, count);
+
+      for (let i = 0; i < result.characters.length; i += 1) {
+        this.state.teamPlayer.characters.push(result.characters[i]);
+      }
     }
 
-    if (this.state.positions.length <= this.characterCount) {
+    if (this.state.positions.length <= characterCount) {
       this.state.positions = [];
     }
 
@@ -96,8 +105,8 @@ export default class GameController {
     }
 
     if (this.state.teamEnemy === null) {
-      this.state.teamEnemy = generateTeam(this.allowedTypesEnemy, maxLevel, this.characterCount);
-      for (let i = 0; i < this.characterCount; i += 1) {
+      this.state.teamEnemy = generateTeam(this.allowedTypesEnemy, maxLevel, characterCount);
+      for (let i = 0; i < characterCount; i += 1) {
         const posEnemy = validposEnemy[Math.ceil(Math.random() * validposEnemy.length)];
         if (!posPlayerBusy.includes(posEnemy) && posEnemy !== undefined) {
           posPlayerBusy.push(posEnemy);
@@ -120,7 +129,7 @@ export default class GameController {
 
     if (this.gamePlay.cells[index].querySelector('.character')
     && teamPlayer.includes(this.state.positions
-      .find((el) => el.position === index).character.type)) {
+      .find((el) => el.position === index).character.type)) { // Ошибка
       const lastClick = document.querySelector('.selected-yellow');
       if (lastClick !== null) {
         const indexLastClick = this.gamePlay.cells.findIndex((el) => el === lastClick);
@@ -129,6 +138,8 @@ export default class GameController {
       this.gamePlay.selectCell(index);
     } else if (document.querySelector('.selected-yellow')
               && document.querySelector('.selected-green')) {
+      this.state.turn = 'enemy';
+
       const lastClick = document.querySelector('.selected-yellow');
       const indexLastClick = this.gamePlay.cells.findIndex((el) => el === lastClick);
 
@@ -146,6 +157,8 @@ export default class GameController {
 
       this.turnEnemy();
     } else if (document.querySelector('.selected-red')) {
+      this.state.turn = 'enemy';
+
       const indexAttacker = this.gamePlay.cells.findIndex((el) => el === document.querySelector('.selected-yellow'));
       const attacker = this.state.positions.find((el) => el.position === indexAttacker).character;
 
@@ -162,16 +175,18 @@ export default class GameController {
           .filter((el) => el !== target);
       }
 
+      this.gamePlay.deselectCell(indexAttacker);
+      this.onCellLeave(indexTarget);
+
       this.gamePlay.showDamage(indexTarget, damage)
         .then(() => {
-          this.gamePlay.deselectCell(indexAttacker);
-          this.onCellLeave(indexTarget);
           if (this.state.teamEnemy.characters.length === 0) {
             for (let i = 0; i < this.state.positions.length; i += 1) {
               this.state.positions[i].character.levelUp();
             }
             this.state.level += 1;
             this.state.teamEnemy = null;
+            this.state.turn = 'player';
             this.init();
           } else {
             this.gamePlay.redrawPositions(this.state.positions);
@@ -186,12 +201,13 @@ export default class GameController {
   onCellEnter(index) {
     // TODO: react to mouse enter
     this.gamePlay.setCursor(cursors.notallowed);
+    if (this.state.turn === 'enemy') return;
 
     const { boardSize } = this.gamePlay;
     const playerTeam = ['bowman', 'swordsman', 'magician'];
     const enemyTeam = ['vampire', 'undead', 'daemon'];
 
-    if (this.gamePlay.cells[index].querySelector('.character')) {
+    if (this.state.positions.find((el) => el.position === index)) {
       const { character } = this.state.positions.find((el) => el.position === index);
       const message = character.showInformation();
       this.gamePlay.showCellTooltip(message, index);
@@ -238,7 +254,12 @@ export default class GameController {
   onNewGame() {
     this.removeListenerBoard();
     this.addListenersBoard();
-    this.state = null;
+    this.state = new GameState();
+
+    if (this.stateService.load() !== null) {
+      this.state.maxScore = this.stateService.load().maxScore;
+    }
+
     this.init();
     return GamePlay.showMessage('Новая игра');
   }
@@ -252,14 +273,17 @@ export default class GameController {
     if (!this.stateService.load()) {
       return GamePlay.showMessage('Нет сохраненной игры');
     }
+
     GameState.from(this.stateService.load());
     Object.assign(this.state, GameState);
     this.init();
+
+    this.removeListenerBoard();
+    this.addListenersBoard();
     return GamePlay.showMessage('Игра загружена');
   }
 
   turnEnemy() {
-    this.state.turn = 'enemy';
     Enemy.from(this.state, this.gamePlay.boardSize);
 
     const possibleTargets = Enemy.possibleTargets();
@@ -287,7 +311,9 @@ export default class GameController {
       this.gamePlay.showDamage(target.position, damage)
         .then(() => {
           if (this.state.teamPlayer.characters.length === 0) {
-            GamePlay.showMessage('Игра окончена');
+            const score = this.calculationScore();
+            this.updateScore(score);
+            GamePlay.showMessage(`Игра окончена \n Текущий результат ${score} \n Рекорд ${this.state.maxScore}`);
             this.removeListenerBoard();
           } else {
             this.gamePlay.redrawPositions(this.state.positions);
@@ -320,5 +346,26 @@ export default class GameController {
     this.gamePlay.cellClickListeners = [];
     this.gamePlay.cellEnterListeners = [];
     this.gamePlay.cellLeaveListeners = [];
+  }
+
+  calculationScore() {
+    let result = 0;
+    result += (this.state.level - 1) * 1000;
+    result += this.state.teamPlayer.characters.length * 100;
+    return result;
+  }
+
+  updateScore(score) {
+    const state = this.stateService.load();
+    if (state !== null) {
+      if (state.maxScore < score) {
+        state.maxScore = score;
+        this.stateService.save(state);
+      }
+    } else {
+      const element = new GameState();
+      element.maxScore = score;
+      this.stateService.save(element);
+    }
   }
 }

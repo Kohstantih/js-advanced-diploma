@@ -10,20 +10,22 @@ import Vampire from './characters/Vampire';
 export default class GameState {
   constructor() {
     this.level = 1;
-    this.turns = 'player';
+    this.turn = 'player';
     this.teamPlayer = null;
     this.teamEnemy = null;
     this.positions = [];
+    this.maxScore = 0;
   }
 
   static from(object) {
     // TODO: create object
 
     this.level = object.level;
-    this.turns = object.turns;
+    this.turn = object.turn;
     this.positions = [];
     this.teamPlayer = null;
     this.teamEnemy = null;
+    this.maxScore = object.maxScore;
 
     const players = [];
     const enemies = [];
