@@ -1,6 +1,6 @@
-image: Previous Visual Studio 2022
+image: Ubuntu1804
 
-stack: node 18
+stack: node 16
 
 branches:
   only:
